@@ -4,6 +4,7 @@ import platform
 import shutil
 import subprocess
 import requests
+import time
 
 
 def check_ffmpeg_installed():
@@ -11,6 +12,28 @@ def check_ffmpeg_installed():
         print("Error: FFmpeg is not installed or not in your system PATH.")
         print("Please install FFmpeg and ensure it is added to the PATH environment variable.")
         sys.exit(1)
+
+
+def robust_get(url, stream=True):
+    """
+    Performed a GET request that handled rate limiting and network errors by using exponential backoff.
+    The function retried indefinitely when HTTP 429 or other network errors were encountered.
+    """
+    backoff = 1
+    while True:
+        try:
+            response = requests.get(url, stream=stream)
+            if response.status_code == 429:
+                print(f"Rate limited by server, waiting {backoff} seconds...")
+                time.sleep(backoff)
+                backoff *= 2
+                continue
+            response.raise_for_status()
+            return response
+        except requests.exceptions.RequestException as e:
+            print(f"Request error: {e}. Retrying in {backoff} seconds...")
+            time.sleep(backoff)
+            backoff *= 2
 
 
 def get_default_download_directory():
@@ -32,6 +55,7 @@ def download_direct(url, output_directory="."):
     Downloaded a file from a direct URL and saved it in the specified directory.
 
     The filename was derived from the URL. If no filename could be determined, a default name was used.
+    This function used robust_get to extend rate/request limits indefinitely.
     """
     local_filename = url.split("/")[-1]
     if not local_filename:
@@ -39,8 +63,7 @@ def download_direct(url, output_directory="."):
     local_filepath = os.path.join(output_directory, local_filename)
 
     try:
-        with requests.get(url, stream=True) as response:
-            response.raise_for_status()
+        with robust_get(url, stream=True) as response:
             with open(local_filepath, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     if chunk:
