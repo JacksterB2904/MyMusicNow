@@ -16,7 +16,7 @@ config = {
     "terminal_output": True
 }
 
-def terminal_output(text: str) -> None:
+def terminal_output(text) -> None:
     if config["terminal_output"]:
         print(f"{text}")
 
